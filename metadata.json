@@ -1,0 +1,5 @@
+{
+  "name": "SME Accounting System",
+  "description": "A simple accounting system for small and medium-sized enterprises to manage sales, purchases, inventory, and staff.",
+  "requestFramePermissions": []
+}
