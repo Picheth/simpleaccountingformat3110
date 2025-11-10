@@ -1,0 +1,244 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model Supplier {
+  id         String     @id @db.VarChar(50)
+  name       String     @db.VarChar(255)
+  vatTin     String?    @map("vat_tin") @db.VarChar(50)
+  phone      String?    @db.VarChar(50)
+  email      String?    @db.VarChar(255)
+  address    String?
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+  
+  purchases  Purchase[]
+  
+  @@index([name])
+  @@map("suppliers")
+}
+
+model Product {
+  id              String              @id @db.VarChar(50)
+  name            String              @db.VarChar(255)
+  description     String?
+  category        String?             @db.VarChar(100)
+  currentStock    Int                 @default(0) @map("current_stock")
+  minStockLevel   Int                 @default(0) @map("min_stock_level")
+  unit            String              @default("pcs") @db.VarChar(50)
+  averageCost     Decimal             @default(0) @map("average_cost") @db.Decimal(15, 2)
+  sellingPrice    Decimal             @default(0) @map("selling_price") @db.Decimal(15, 2)
+  isActive        Boolean             @default(true) @map("is_active")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  
+  purchases       Purchase[]
+  sales           Sale[]
+  inventoryMovements InventoryMovement[]
+  
+  @@index([name])
+  @@index([category])
+  @@index([isActive])
+  @@map("products")
+}
+
+model Staff {
+  id               String              @id @db.VarChar(50)
+  employeeId       String              @unique @map("employee_id") @db.VarChar(50)
+  nameKhmer        String?             @map("name_khmer") @db.VarChar(255)
+  nameEnglish      String              @map("name_english") @db.VarChar(255)
+  gender           String?             @db.VarChar(10)
+  dateOfBirth      DateTime?           @map("date_of_birth") @db.Date
+  phone            String?             @db.VarChar(50)
+  email            String?             @db.VarChar(255)
+  address          String?
+  position         String?             @db.VarChar(100)
+  department       String?             @db.VarChar(100)
+  salaryRiel       Decimal             @default(0) @map("salary_riel") @db.Decimal(15, 2)
+  salaryUsd        Decimal             @default(0) @map("salary_usd") @db.Decimal(15, 2)
+  hireDate         DateTime?           @map("hire_date") @db.Date
+  isActive         Boolean             @default(true) @map("is_active")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  
+  nssfContributions NssfContribution[]
+  
+  @@index([employeeId])
+  @@index([nameEnglish])
+  @@index([isActive])
+  @@map("staff")
+}
+
+model Purchase {
+  id            String    @id @db.VarChar(50)
+  date          DateTime  @db.Date
+  type          String    @db.VarChar(50)
+  invoice       String    @db.VarChar(100)
+  supplierId    String    @map("supplier_id") @db.VarChar(50)
+  productId     String?   @map("product_id") @db.VarChar(50)
+  vatTin        String?   @map("vat_tin") @db.VarChar(50)
+  description   String
+  quantity      Decimal   @default(0) @db.Decimal(15, 3)
+  unit          String    @default("pcs") @db.VarChar(50)
+  cost          Decimal   @default(0) @db.Decimal(15, 2)
+  
+  // Expense categories
+  assets        Decimal   @default(0) @db.Decimal(15, 2)
+  goodsForSale  Decimal   @default(0) @map("goods_for_sale") @db.Decimal(15, 2)
+  services      Decimal   @default(0) @db.Decimal(15, 2)
+  staffCost     Decimal   @default(0) @map("staff_cost") @db.Decimal(15, 2)
+  utilities     Decimal   @default(0) @db.Decimal(15, 2)
+  rental        Decimal   @default(0) @db.Decimal(15, 2)
+  others        Decimal   @default(0) @db.Decimal(15, 2)
+  
+  salesTax      Decimal   @default(0) @map("sales_tax") @db.Decimal(15, 2)
+  exchangeRate  Decimal   @default(4100) @map("exchange_rate") @db.Decimal(10, 2)
+  
+  staffUser     String    @map("staff_user") @db.VarChar(255)
+  status        String    @default("Pending") @db.VarChar(20)
+  
+  approvedBy    String?   @map("approved_by") @db.VarChar(255)
+  approvedAt    DateTime? @map("approved_at")
+  paidAt        DateTime? @map("paid_at")
+  
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  supplier      Supplier  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  product       Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  
+  @@index([date])
+  @@index([invoice])
+  @@index([supplierId])
+  @@index([productId])
+  @@index([status])
+  @@index([type])
+  @@map("purchases")
+}
+
+model Sale {
+  id            String    @id @db.VarChar(50)
+  date          DateTime  @db.Date
+  invoice       String    @db.VarChar(100)
+  customer      String    @db.VarChar(255)
+  vatTin        String?   @map("vat_tin") @db.VarChar(50)
+  productId     String    @map("product_id") @db.VarChar(50)
+  description   String
+  quantity      Decimal   @default(0) @db.Decimal(15, 3)
+  unit          String    @default("pcs") @db.VarChar(50)
+  cost          Decimal   @default(0) @db.Decimal(15, 2)
+  
+  // Revenue categories
+  goods         Decimal   @default(0) @db.Decimal(15, 2)
+  services      Decimal   @default(0) @db.Decimal(15, 2)
+  others        Decimal   @default(0) @db.Decimal(15, 2)
+  
+  salesTax      Decimal   @default(0) @map("sales_tax") @db.Decimal(15, 2)
+  cgs           Decimal   @default(0) @db.Decimal(15, 2)
+  
+  seller        String    @db.VarChar(255)
+  exchangeRate  Decimal   @default(4100) @map("exchange_rate") @db.Decimal(10, 2)
+  
+  paymentMethod String?   @map("payment_method") @db.VarChar(50)
+  paymentStatus String    @default("Unpaid") @map("payment_status") @db.VarChar(20)
+  paidAmount    Decimal   @default(0) @map("paid_amount") @db.Decimal(15, 2)
+  
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  
+  @@index([date])
+  @@index([invoice])
+  @@index([customer])
+  @@index([productId])
+  @@index([seller])
+  @@index([paymentStatus])
+  @@map("sales")
+}
+
+model Rental {
+  id            String    @id @db.VarChar(50)
+  date          DateTime  @db.Date
+  recipient     String    @db.VarChar(255)
+  object        String
+  invoice       String?   @db.VarChar(100)
+  amountUsd     Decimal   @default(0) @map("amount_usd") @db.Decimal(15, 2)
+  exchangeRate  Decimal   @default(4100) @map("exchange_rate") @db.Decimal(10, 2)
+  
+  paymentStatus String    @default("Unpaid") @map("payment_status") @db.VarChar(20)
+  paidAmount    Decimal   @default(0) @map("paid_amount") @db.Decimal(15, 2)
+  
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  @@index([date])
+  @@index([recipient])
+  @@index([paymentStatus])
+  @@map("rentals")
+}
+
+model NssfContribution {
+  id                    String    @id @db.VarChar(50)
+  staffId               String    @map("staff_id") @db.VarChar(50)
+  periodMonth           Int       @map("period_month")
+  periodYear            Int       @map("period_year")
+  
+  baseSalary            Decimal   @default(0) @map("base_salary") @db.Decimal(15, 2)
+  employerContribution  Decimal   @default(0) @map("employer_contribution") @db.Decimal(15, 2)
+  employeeContribution  Decimal   @default(0) @map("employee_contribution") @db.Decimal(15, 2)
+  
+  paymentStatus         String    @default("Unpaid") @map("payment_status") @db.VarChar(20)
+  paymentDate           DateTime? @map("payment_date") @db.Date
+  
+  notes                 String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  
+  staff                 Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  
+  @@unique([staffId, periodMonth, periodYear])
+  @@index([staffId])
+  @@index([periodYear, periodMonth])
+  @@index([paymentStatus])
+  @@map("nssf_contributions")
+}
+
+model InventoryMovement {
+  id              Int       @id @default(autoincrement())
+  productId       String    @map("product_id") @db.VarChar(50)
+  movementType    String    @map("movement_type") @db.VarChar(20)
+  quantity        Decimal   @db.Decimal(15, 3)
+  referenceType   String?   @map("reference_type") @db.VarChar(50)
+  referenceId     String?   @map("reference_id") @db.VarChar(50)
+  previousStock   Decimal   @map("previous_stock") @db.Decimal(15, 3)
+  newStock        Decimal   @map("new_stock") @db.Decimal(15, 3)
+  unitCost        Decimal   @default(0) @map("unit_cost") @db.Decimal(15, 2)
+  notes           String?
+  performedBy     String?   @map("performed_by") @db.VarChar(255)
+  movementDate    DateTime  @default(now()) @map("movement_date")
+  
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  @@index([productId])
+  @@index([movementType])
+  @@index([referenceType, referenceId])
+  @@index([movementDate])
+  @@map("inventory_movements")
+}

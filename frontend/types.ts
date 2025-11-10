@@ -4,6 +4,11 @@ export type PurchaseStatus = 'Pending' | 'Approved' | 'Paid' | 'Cancelled';
 export interface Product {
   id: string;
   name: string;
+  purchasePrice?: number;
+  sellingPrice?: number;
+  category?: string;
+  currentStock?: number;
+  unit?: string;
 }
 
 export interface Supplier {

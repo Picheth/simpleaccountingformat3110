@@ -4,6 +4,8 @@ import { Purchase, Supplier, PurchaseStatus, Product } from '../types';
 import DataTable from './DataTable';
 import Modal from './Modal';
 import { PrintIcon } from '../constants';
+import * as XLSX from 'xlsx';
+import Swal from 'sweetalert2';
 
 interface PurchasesProps {
   purchases: Purchase[];
@@ -383,15 +385,256 @@ const Purchases: React.FC<PurchasesProps> = ({ purchases, suppliers, products, a
 
   const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" /></svg>;
   const DeleteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
+  const ExcelIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
+
+  const exportToExcel = () => {
+    // Prepare data for Excel
+    const excelData = filteredPurchases.map(purchase => {
+      const supplierName = suppliers.find(s => s.id === purchase.supplierId)?.name || purchase.supplierId;
+      const totalCost = purchase.assets + purchase.goodsForSale + purchase.services + 
+                       purchase.staffCost + purchase.utilities + purchase.rental + 
+                       purchase.others + purchase.salesTax;
+      const totalUsd = purchase.exchangeRate > 0 ? totalCost / purchase.exchangeRate : 0;
+
+      return {
+        'Date': purchase.date,
+        'Invoice': purchase.invoice,
+        'Type': purchase.type,
+        'Status': purchase.status,
+        'Supplier': supplierName,
+        'VAT TIN': purchase.vatTin || '',
+        'Description': purchase.description,
+        'Quantity': purchase.quantity,
+        'Unit': purchase.unit,
+        'Unit Price (KHR)': purchase.cost,
+        'Assets (KHR)': purchase.assets,
+        'Goods for Sale (KHR)': purchase.goodsForSale,
+        'Services (KHR)': purchase.services,
+        'Staff Cost (KHR)': purchase.staffCost,
+        'Utilities (KHR)': purchase.utilities,
+        'Rental (KHR)': purchase.rental,
+        'Others (KHR)': purchase.others,
+        'Sales Tax (KHR)': purchase.salesTax,
+        'Total Cost (KHR)': totalCost,
+        'Exchange Rate': purchase.exchangeRate,
+        'Total (USD)': totalUsd.toFixed(2),
+        'Staff/User': purchase.staffUser,
+      };
+    });
+
+    // Create worksheet
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    
+    // Set column widths
+    const columnWidths = [
+      { wch: 12 }, // Date
+      { wch: 15 }, // Invoice
+      { wch: 12 }, // Type
+      { wch: 10 }, // Status
+      { wch: 20 }, // Supplier
+      { wch: 15 }, // VAT TIN
+      { wch: 30 }, // Description
+      { wch: 10 }, // Quantity
+      { wch: 8 },  // Unit
+      { wch: 15 }, // Unit Price
+      { wch: 15 }, // Assets
+      { wch: 18 }, // Goods for Sale
+      { wch: 15 }, // Services
+      { wch: 15 }, // Staff Cost
+      { wch: 15 }, // Utilities
+      { wch: 15 }, // Rental
+      { wch: 15 }, // Others
+      { wch: 15 }, // Sales Tax
+      { wch: 18 }, // Total Cost
+      { wch: 12 }, // Exchange Rate
+      { wch: 15 }, // Total USD
+      { wch: 15 }, // Staff/User
+    ];
+    worksheet['!cols'] = columnWidths;
+
+    // Create workbook
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Purchases');
+
+    // Generate filename with current date
+    const fileName = `Purchases_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    // Save file
+    XLSX.writeFile(workbook, fileName);
+  };
+
+  const importFromExcel = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        
+        // Get raw data to access cell types
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: '' }) as any[];
+
+        let importedCount = 0;
+        let errorCount = 0;
+
+        // Helper function to convert Excel date
+        const parseExcelDate = (dateValue: any): string => {
+          if (!dateValue) return new Date().toISOString().split('T')[0];
+          
+          // If it's already in YYYY-MM-DD format
+          if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+            return dateValue;
+          }
+          
+          // If it's a Date object
+          if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+            const year = dateValue.getFullYear();
+            const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+            const day = String(dateValue.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          }
+          
+          // If it's Excel serial number
+          if (typeof dateValue === 'number') {
+            // Excel date serial: days since 1900-01-01 (with 1900 leap year bug)
+            const excelEpoch = new Date(1900, 0, 1);
+            const daysOffset = dateValue > 59 ? dateValue - 2 : dateValue - 1; // Account for Excel 1900 leap year bug
+            const date = new Date(excelEpoch.getTime() + daysOffset * 86400 * 1000);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          }
+          
+          // Try to parse as date string
+          try {
+            const date = new Date(dateValue);
+            if (!isNaN(date.getTime())) {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
+            }
+          } catch (err) {
+            console.error('Date parsing error:', err);
+          }
+          
+          return new Date().toISOString().split('T')[0];
+        };
+
+        for (const row of jsonData) {
+          try {
+            // Find supplier by name
+            const supplier = suppliers.find(s => 
+              s.name.toLowerCase() === String(row['Supplier'] || '').toLowerCase()
+            );
+
+            // Find product by name if it's a goods purchase
+            let productId: string | undefined = undefined;
+            if (row['Type'] === 'Goods' && row['Description']) {
+              const product = products.find(p => 
+                p.name.toLowerCase() === String(row['Description']).toLowerCase()
+              );
+              productId = product?.id;
+            }
+
+            const purchaseData: Omit<Purchase, 'id'> = {
+              date: parseExcelDate(row['Date']),
+              type: row['Type'] || 'Others',
+              invoice: row['Invoice'] || '',
+              supplierId: supplier?.id || suppliers[0]?.id || '',
+              productId: productId,
+              vatTin: row['VAT TIN'] || '',
+              description: row['Description'] || '',
+              quantity: Number(row['Quantity']) || 0,
+              unit: row['Unit'] || 'pcs',
+              cost: Number(row['Unit Price (KHR)']) || 0,
+              assets: Number(row['Assets (KHR)']) || 0,
+              goodsForSale: Number(row['Goods for Sale (KHR)']) || 0,
+              services: Number(row['Services (KHR)']) || 0,
+              staffCost: Number(row['Staff Cost (KHR)']) || 0,
+              utilities: Number(row['Utilities (KHR)']) || 0,
+              rental: Number(row['Rental (KHR)']) || 0,
+              others: Number(row['Others (KHR)']) || 0,
+              salesTax: Number(row['Sales Tax (KHR)']) || 0,
+              exchangeRate: Number(row['Exchange Rate']) || 4100,
+              staffUser: row['Staff/User'] || 'Admin',
+              status: (row['Status'] || 'Pending') as PurchaseStatus,
+            };
+
+            // Add purchase sequentially to avoid localStorage conflicts
+            await addPurchase(purchaseData);
+            importedCount++;
+          } catch (error) {
+            console.error('Error importing row:', row, error);
+            errorCount++;
+          }
+        }
+
+        // Show import results
+        if (importedCount > 0) {
+          await Swal.fire({
+            title: "Import Complete!",
+            html: `✅ Successfully imported: <strong>${importedCount}</strong><br>❌ Errors: <strong>${errorCount}</strong>`,
+            icon: importedCount > 0 ? "success" : "warning",
+            timer: 3000,
+            showConfirmButton: true
+          });
+        } else {
+          await Swal.fire({
+            title: "No Data Imported",
+            text: `All ${errorCount} rows had errors. Please check the file format.`,
+            icon: "error"
+          });
+        }
+
+        // Reset the file input
+        event.target.value = '';
+      } catch (error) {
+        console.error('Error reading Excel file:', error);
+        await Swal.fire({
+          title: "Import Error",
+          text: "Error reading Excel file. Please check the file format.",
+          icon: "error"
+        });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
 
 
   return (
     <div>
         <div className="flex justify-between items-center mb-4">
             <h1 className="text-2xl font-bold text-gray-800">Purchases</h1>
-            <button onClick={handleAdd} className="px-4 py-2 bg-primary text-white rounded-lg shadow hover:bg-primary-dark transition whitespace-nowrap">
-                Add Purchase
-            </button>
+            <div className="flex gap-2">
+                <button 
+                    onClick={exportToExcel} 
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 transition whitespace-nowrap flex items-center gap-2"
+                >
+                    <ExcelIcon />
+                    Export to Excel
+                </button>
+                <label className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition whitespace-nowrap flex items-center gap-2 cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Import from Excel
+                    <input 
+                        type="file" 
+                        accept=".xlsx,.xls" 
+                        onChange={importFromExcel} 
+                        className="hidden"
+                    />
+                </label>
+                <button onClick={handleAdd} className="px-4 py-2 bg-primary text-white rounded-lg shadow hover:bg-primary-dark transition whitespace-nowrap">
+                    Add Purchase
+                </button>
+            </div>
         </div>
         
         <div className="bg-white p-4 rounded-lg shadow-md mb-4">

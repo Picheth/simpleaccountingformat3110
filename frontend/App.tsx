@@ -17,17 +17,19 @@ import Spinner from './components/Spinner';
 import { navItems } from './constants';
 import * as api from './api';
 import { Product, Purchase, Sale, Staff, Rental, Supplier } from './types';
+import useLocalStorage from './hooks/useLocalStorage';
 
 const App: React.FC = () => {
     const [activePage, setActivePage] = useState('Dashboard');
     const [loading, setLoading] = useState(true);
 
-    const [products, setProducts] = useState<Product[]>([]);
-    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [staff, setStaff] = useState<Staff[]>([]);
-    const [purchases, setPurchases] = useState<Purchase[]>([]);
-    const [sales, setSales] = useState<Sale[]>([]);
-    const [rentals, setRentals] = useState<Rental[]>([]);
+    // Use localStorage to persist data
+    const [products, setProducts] = useLocalStorage<Product[]>('saf_products', []);
+    const [suppliers, setSuppliers] = useLocalStorage<Supplier[]>('saf_suppliers', []);
+    const [staff, setStaff] = useLocalStorage<Staff[]>('saf_staff', []);
+    const [purchases, setPurchases] = useLocalStorage<Purchase[]>('saf_purchases', []);
+    const [sales, setSales] = useLocalStorage<Sale[]>('saf_sales', []);
+    const [rentals, setRentals] = useLocalStorage<Rental[]>('saf_rentals', []);
     
     const [purchaseToPrint, setPurchaseToPrint] = useState<Purchase | null>(null);
     const [saleToPrint, setSaleToPrint] = useState<Sale | null>(null);
@@ -35,18 +37,21 @@ const App: React.FC = () => {
     useEffect(() => {
         const loadData = async () => {
             try {
-                const [
-                    productsData, suppliersData, staffData, purchasesData, salesData, rentalsData
-                ] = await Promise.all([
-                    api.getProducts(), api.getSuppliers(), api.getStaff(),
-                    api.getPurchases(), api.getSales(), api.getRentals(),
-                ]);
-                setProducts(productsData);
-                setSuppliers(suppliersData);
-                setStaff(staffData);
-                setPurchases(purchasesData);
-                setSales(salesData);
-                setRentals(rentalsData);
+                // Only load from API if localStorage is empty
+                if (products.length === 0 || suppliers.length === 0 || staff.length === 0) {
+                    const [
+                        productsData, suppliersData, staffData, purchasesData, salesData, rentalsData
+                    ] = await Promise.all([
+                        api.getProducts(), api.getSuppliers(), api.getStaff(),
+                        api.getPurchases(), api.getSales(), api.getRentals(),
+                    ]);
+                    setProducts(productsData);
+                    setSuppliers(suppliersData);
+                    setStaff(staffData);
+                    setPurchases(purchasesData);
+                    setSales(salesData);
+                    setRentals(rentalsData);
+                }
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
                 // Optionally, set an error state here to show a message to the user
@@ -87,6 +92,46 @@ const App: React.FC = () => {
         setSales(prev => prev.filter(s => s.id !== saleId));
     };
 
+    const addStaff = async (staffData: Omit<Staff, 'id'>) => {
+        const newStaff = await api.addStaff(staffData);
+        setStaff(prev => [newStaff, ...prev]);
+    };
+
+    const updateStaff = async (staffData: Staff) => {
+        const updatedStaff = await api.updateStaff(staffData);
+        setStaff(prev => prev.map(s => s.id === updatedStaff.id ? updatedStaff : s));
+    };
+
+    const deleteStaff = async (staffId: string) => {
+        try {
+            await api.deleteStaff(staffId);
+            setStaff(prev => prev.filter(s => s.id !== staffId));
+        } catch (error) {
+            // Delete was cancelled or failed
+            console.log('Delete cancelled or failed');
+        }
+    };
+
+    const addSupplier = async (supplierData: Omit<Supplier, 'id'>) => {
+        const newSupplier = await api.addSupplier(supplierData);
+        setSuppliers(prev => [newSupplier, ...prev]);
+    };
+
+    const updateSupplier = async (supplierData: Supplier) => {
+        const updatedSupplier = await api.updateSupplier(supplierData);
+        setSuppliers(prev => prev.map(s => s.id === updatedSupplier.id ? updatedSupplier : s));
+    };
+
+    const deleteSupplier = async (supplierId: string) => {
+        try {
+            await api.deleteSupplier(supplierId);
+            setSuppliers(prev => prev.filter(s => s.id !== supplierId));
+        } catch (error) {
+            // Delete was cancelled or failed
+            console.log('Delete cancelled or failed');
+        }
+    };
+
 
     const renderPage = () => {
         switch (activePage) {
@@ -101,9 +146,9 @@ const App: React.FC = () => {
             case 'Products':
                 return <Products products={products} />;
             case 'Suppliers':
-                return <Suppliers suppliers={suppliers} />;
+                return <Suppliers suppliers={suppliers} purchases={purchases} addSupplier={addSupplier} updateSupplier={updateSupplier} deleteSupplier={deleteSupplier} />;
             case 'Staff':
-                return <StaffPage staff={staff} />;
+                return <StaffPage staff={staff} addStaff={addStaff} updateStaff={updateStaff} deleteStaff={deleteStaff} />;
             case 'Rental':
                 return <RentalPage rentals={rentals} />;
             case 'NSSF':
